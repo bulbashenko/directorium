@@ -6,6 +6,8 @@ A **free** Thunderbird add-on that brings the Microsoft Exchange / Office 365
 
 A free alternative to the paid **Owl for Exchange**, focused on the directory.
 
+📖 **New here? Read the [User Guide](GUIDE.md).**
+
 > *directorium* (Latin): a directory or guide — also the Church's liturgical
 > Ordo. Fitting for an address directory (and a future calendar).
 
