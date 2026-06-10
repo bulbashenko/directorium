@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Directorium settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Directorium</h1>
+        <p class="sub">Exchange directory & contacts for Thunderbird — free.</p>
+      </header>
+
+      <section>
+        <h2>Connection</h2>
+        <label>
+          <span>Your email address</span>
+          <div class="row">
+            <input id="email" type="email" placeholder="you@yourcompany.com" />
+            <button id="discoverBtn" type="button">Auto-detect</button>
+          </div>
+          <small>Enter your Exchange email and click Auto-detect — Directorium will find the server for you.</small>
+        </label>
+
+        <label>
+          <span>Account type</span>
+          <select id="authMode">
+            <option value="owa">Office 365 — OWA web login (works like Owl on locked tenants; no admin)</option>
+            <option value="oauth-interactive">Office 365 — EWS, interactive, your own app</option>
+            <option value="oauth">Office 365 — EWS, device code (lenient tenants)</option>
+            <option value="basic">On-premise Exchange (username / password)</option>
+          </select>
+          <small>OWA web login signs you into webmail like a browser and uses Outlook on the web's own directory API — it passes Conditional Access policies that block third-party EWS apps, and needs no admin and no app registration. (Private API; may need adjusting per tenant.)</small>
+        </label>
+
+        <label>
+          <span>EWS endpoint URL</span>
+          <input id="ewsUrl" type="url" placeholder="https://outlook.office365.com/EWS/Exchange.asmx" />
+        </label>
+
+        <label>
+          <span>Exchange version</span>
+          <select id="exchangeVersion">
+            <option>Exchange2013_SP1</option>
+            <option>Exchange2013</option>
+            <option>Exchange2016</option>
+            <option>Exchange2010_SP2</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Address book name</span>
+          <input id="addressBookName" type="text" placeholder="Exchange GAL" />
+        </label>
+      </section>
+
+      <!-- OWA web login (Office 365, like Owl) -->
+      <section id="owaSection" class="hidden">
+        <h2>OWA web sign-in</h2>
+        <label>
+          <span>OWA URL</span>
+          <input id="owaUrl" type="url" placeholder="https://outlook.office365.com" />
+        </label>
+        <p style="color:var(--muted);font-size:13px">
+          Click below to open Microsoft webmail in a tab and sign in normally (same
+          first-party login your browser uses — passes Conditional Access, no admin,
+          no app). <b>Leave that Outlook tab open</b>: Directorium reuses the token it
+          refreshes to query the GAL. No admin approval, no app registration.
+        </p>
+        <button id="owaSignInBtn" type="button" class="primary">Sign in (OWA)</button>
+        <button id="owaInspectBtn" type="button">Check token status</button>
+        <pre id="owaCookieDump" class="hidden" style="margin-top:10px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:11px;white-space:pre-wrap;word-break:break-all;"></pre>
+      </section>
+
+      <!-- OAuth (Office 365) -->
+      <section id="oauthSection">
+        <h2>Office 365 sign-in</h2>
+        <label>
+          <span>Client ID</span>
+          <input id="clientId" type="text" />
+          <small>Default is the public Microsoft Office client — pre-trusted, so no tenant admin approval is required.</small>
+        </label>
+        <label>
+          <span>Tenant</span>
+          <input id="tenant" type="text" placeholder="common" />
+        </label>
+        <label>
+          <span>Scopes</span>
+          <input id="scopes" type="text" />
+        </label>
+
+        <div id="redirectBox" class="redirect hidden">
+          <span>Redirect URL to register in your Azure app:</span>
+          <code id="redirectUrl">…</code>
+          <small>In Azure → App registrations → your app → Authentication → add this as a <b>Mobile and desktop / Web</b> redirect URI.</small>
+        </div>
+
+        <button id="signInBtn" type="button" class="primary">Sign in</button>
+
+        <div id="deviceBox" class="device hidden">
+          <p>1. Open <a id="deviceUri" href="#" target="_blank" rel="noopener">microsoft.com/devicelogin</a></p>
+          <p>2. Enter this code:</p>
+          <p class="code" id="deviceCode">--------</p>
+          <p class="status" id="signInStatus">Waiting for you to sign in…</p>
+        </div>
+      </section>
+
+      <!-- Basic (on-premise) -->
+      <section id="basicSection" class="hidden">
+        <h2>On-premise credentials</h2>
+        <label>
+          <span>Username</span>
+          <input id="username" type="text" placeholder="DOMAIN\\user or user@example.com" />
+        </label>
+        <label>
+          <span>Password</span>
+          <input id="password" type="password" />
+          <small>Stored locally on this device only.</small>
+        </label>
+      </section>
+
+      <section class="actions">
+        <button id="saveBtn" type="button" class="primary">Save</button>
+        <button id="testBtn" type="button">Test connection</button>
+        <button id="syncBtn" type="button">Sync full GAL</button>
+        <button id="syncContactsBtn" type="button">Sync my contacts</button>
+        <span id="msg" class="msg"></span>
+      </section>
+
+      <section id="diagSection">
+        <h2>Diagnostics</h2>
+        <p style="color:var(--muted);font-size:13px">If contacts aren't showing up, use this to see what Exchange actually returns.</p>
+        <label>
+          <span>Search term</span>
+          <div class="row">
+            <input id="diagQuery" type="text" placeholder="jan" value="a" />
+            <button id="diagBtn" type="button">Search GAL</button>
+          </div>
+        </label>
+        <div id="diagResult" class="diag-result hidden">
+          <p id="diagSummary"></p>
+          <details>
+            <summary>Raw EWS XML response</summary>
+            <pre id="diagXml"></pre>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

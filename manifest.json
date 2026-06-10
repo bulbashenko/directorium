@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Directorium — Exchange directory & contacts for Thunderbird",
+  "version": "0.2.0",
+  "description": "Free Exchange/Office 365 Global Address List (GAL) and contacts for Thunderbird — works even on locked tenants. A free alternative to Owl for the directory.",
+  "author": "Directorium contributors",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "directorium@bulbashenko.dev",
+      "strict_min_version": "128.0"
+    }
+  },
+  "icons": {
+    "48": "icons/directorium-48.svg",
+    "96": "icons/directorium-96.svg"
+  },
+  "permissions": [
+    "addressBooks",
+    "storage",
+    "identity",
+    "tabs",
+    "cookies",
+    "webRequest",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://outlook.office365.com/*",
+    "https://outlook.office.com/*",
+    "https://outlook.cloud.microsoft/*",
+    "https://login.microsoftonline.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "scripts": ["src/background.js"],
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  }
+}

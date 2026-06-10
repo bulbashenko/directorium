@@ -1,0 +1,16 @@
+{
+  "name": "directorium",
+  "version": "0.1.0",
+  "description": "Free Global Address List (GAL) and Exchange directory support for Thunderbird via EWS — a free alternative to Owl for the address book.",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "lint": "web-ext lint --source-dir=. --self-hosted",
+    "run": "web-ext run --target=thunderbird --source-dir=.",
+    "pack": "web-ext build --source-dir=. --artifacts-dir=dist --overwrite-dest"
+  },
+  "devDependencies": {
+    "web-ext": "^8.0.0"
+  },
+  "license": "MPL-2.0"
+}
