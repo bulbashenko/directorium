@@ -1,6 +1,6 @@
 {
   "name": "directorium",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Free Global Address List (GAL) and Exchange directory support for Thunderbird via EWS — a free alternative to Owl for the address book.",
   "type": "module",
   "scripts": {

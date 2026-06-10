@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Directorium — Exchange GAL & Contacts",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Free Exchange/Office 365 Global Address List (GAL) and contacts for Thunderbird — works even on locked tenants. A free alternative to Owl for the directory.",
   "author": "Directorium contributors",
   "browser_specific_settings": {
@@ -19,7 +19,6 @@
     "storage",
     "identity",
     "tabs",
-    "cookies",
     "webRequest",
     "alarms"
   ],
