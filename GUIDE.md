@@ -4,9 +4,12 @@ Directorium brings your Microsoft Exchange / Office 365 **Global Address List
 (GAL)** and **personal contacts** into Thunderbird — including on locked-down
 corporate/university tenants where other free tools fail.
 
-- **GAL search** — start typing a name in any **To:/Cc:** field, or search the
-  **Exchange GAL** address book, and matching colleagues appear with email,
-  phone, job title, company and department.
+- **GAL search** — start typing a name in any **To:/Cc:** field, or search your
+  organization's address book, and matching colleagues appear with email,
+  phone, job title, company and department. The book is **named after your
+  organization** (e.g. `contoso.com`), and you can rename it.
+- **Multiple accounts** — sign into more than one mailbox and each gets its own
+  named GAL (and its own contacts book), side by side.
 - **Contacts sync** — copy your Exchange *Contacts* folder into a normal,
   browsable Thunderbird address book.
 
@@ -48,12 +51,18 @@ This mode works even when your organisation blocks third-party apps.
 1. Open **Add-ons → Directorium → Options** (or Preferences).
 2. **Account type** → **Office 365 — OWA web login**.
 3. Leave **OWA URL** as `https://outlook.office365.com`.
-4. Click **Sign in (OWA)**. A tab opens to Microsoft webmail.
+4. Click **Add account (sign in)**. A tab opens to Microsoft webmail.
 5. Sign in with your normal account and password (and MFA if asked).
 6. **Wait for your mailbox to load, then leave that tab open.**
-7. Click **Check token status** — you should see *"✓ Token captured … left"*.
+7. Click **Refresh status** — your account should appear under **Accounts**
+   with a live token, and a new address book named after your organization.
 
 That's it. Directorium now uses the same secure session your browser does.
+
+> **More than one mailbox?** Click **Add account (sign in)** again and sign in
+> with the other account. Each mailbox gets its own named address book. Use the
+> **Rename** button to give a book a friendlier name (takes effect after a
+> Thunderbird restart), or **Remove** to drop an account.
 
 ### Set up — On-premise Exchange
 1. **Account type** → **On-premise Exchange**.
@@ -71,15 +80,16 @@ Use **Office 365 — EWS device code** for tenants that allow it, or
 ## 4. Daily use
 
 ### Search the directory (GAL)
-- In the **address book** (Tools → Address Book), click **Exchange GAL** and
-  type in the search box.
+- In the **address book** (Tools → Address Book), click the book named after
+  your organization and type in the search box.
 - Or just start typing a name in the **To:** field when composing — matches
   appear automatically.
 
 ### Sync your personal contacts
-- Options → **Sync my contacts**.
-- A new address book **Exchange Contacts** is created/updated with your
-  Exchange Contacts folder. Re-run it any time to refresh.
+- Options → **Sync contacts** (next to the account), or the **Sync my contacts**
+  button for the first account.
+- A new address book **Contacts — <your org>** is created/updated with that
+  account's Exchange Contacts folder. Re-run it any time to refresh.
 
 ---
 
@@ -89,7 +99,7 @@ Use **Office 365 — EWS device code** for tenants that allow it, or
   add-on refreshes its token silently in the background (about hourly) for as
   long as your Microsoft session is valid (usually days).
 - If a search ever fails with an expired-session error, just click
-  **Sign in (OWA)** again.
+  **Add account (sign in)** again with that mailbox.
 
 ---
 
@@ -98,8 +108,9 @@ Use **Office 365 — EWS device code** for tenants that allow it, or
 | Symptom | Fix |
 |--------|-----|
 | **Contacts show as empty/grey cards** | Update to the latest version; reload the add-on. |
-| **"No OWA token yet"** | Click **Sign in (OWA)** and leave the Outlook tab open; then **Check token status**. |
-| **Search returns an "expired" error** | Re-run **Sign in (OWA)**. |
+| **"No OWA token yet"** | Click **Add account (sign in)** and leave the Outlook tab open; then **Refresh status**. |
+| **Search returns an "expired" error** | Click **Add account (sign in)** again with that mailbox. |
+| **Renamed book still shows the old name** | Restart Thunderbird — address-book name changes apply on restart. |
 | **Error 53003 on device-code sign-in** | Your tenant blocks device code — use **OWA web login** instead. |
 | **"Need admin approval" on your own app** | Your tenant blocks third-party apps — use **OWA web login** instead. |
 | **Validator warning: "Invalid permission addressBooks"** | Harmless — it's a Firefox-validator quirk; Thunderbird needs and supports this permission. |

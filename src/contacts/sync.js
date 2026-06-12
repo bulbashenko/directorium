@@ -6,22 +6,20 @@
 // contents (simple and reliable). Two-way (push local edits back) is a future
 // step.
 
-import { getConfig } from "../lib/storage.js";
+import { getConfig, getAccounts } from "../lib/storage.js";
 import { fetchPersonalContacts } from "../owa/owaClient.js";
 import { contactToVCard } from "./vcard.js";
-
-const BOOK_NAME = "Exchange Contacts";
 
 // In Manifest V3 the contact API is namespaced under addressBooks
 // (messenger.addressBooks.contacts), not the top-level messenger.contacts (MV2).
 const contactsApi = messenger.addressBooks.contacts;
 
 /** Find our address book by name, or create it. Returns its id. */
-async function getOrCreateBook() {
+async function getOrCreateBook(bookName) {
   const books = await messenger.addressBooks.list();
-  const existing = books.find((b) => b.name === BOOK_NAME);
+  const existing = books.find((b) => b.name === bookName);
   if (existing) return existing.id;
-  return messenger.addressBooks.create({ name: BOOK_NAME });
+  return messenger.addressBooks.create({ name: bookName });
 }
 
 /** Remove every contact currently in the book (for a clean re-sync). */
@@ -33,17 +31,29 @@ async function clearBook(bookId) {
 }
 
 /**
- * Pull all personal contacts from Exchange and (re)populate the local book.
+ * Pull all personal contacts from one account's Exchange Contacts folder and
+ * (re)populate a local book named after that account ("Contacts — <label>"),
+ * so multiple accounts get separate contact books.
+ * @param {string} [accountId]  Which account to sync; defaults to the first.
  * @returns {Promise<{count:number, bookName:string}>}
  */
-export async function syncPersonalContacts() {
+export async function syncPersonalContacts(accountId) {
   const cfg = await getConfig();
   if (cfg.authMode !== "owa") {
     throw new Error("Personal contacts sync currently requires the OWA web login mode.");
   }
 
-  const contacts = await fetchPersonalContacts();
-  const bookId = await getOrCreateBook();
+  const accounts = await getAccounts();
+  const account = accountId
+    ? accounts.find((a) => a.id === accountId)
+    : accounts[0];
+  if (!account) {
+    throw new Error("No OWA account yet — click Sign in (OWA) first.");
+  }
+
+  const bookName = `Contacts — ${account.label}`;
+  const contacts = await fetchPersonalContacts(account);
+  const bookId = await getOrCreateBook(bookName);
   await clearBook(bookId);
 
   let created = 0;
@@ -57,6 +67,6 @@ export async function syncPersonalContacts() {
     }
   }
 
-  console.debug(`[Directorium] Synced ${created}/${contacts.length} personal contacts into "${BOOK_NAME}"`);
-  return { count: created, bookName: BOOK_NAME };
+  console.debug(`[Directorium] Synced ${created}/${contacts.length} personal contacts into "${bookName}"`);
+  return { count: created, bookName };
 }

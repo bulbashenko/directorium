@@ -21,7 +21,11 @@ device-code and third-party EWS OAuth apps (where most free tools fail).
 ## Features
 
 - **GAL search** — type a name in any recipient field or search the
-  "Exchange GAL" address book; results come live from Exchange.
+  organization's address book; results come live from Exchange. Each book is
+  **named after the organization** it belongs to (e.g. `contoso.com`), not a
+  generic "Exchange GAL", and you can rename it.
+- **Multiple accounts** — sign into more than one mailbox (e.g. work + a second
+  tenant) and each gets its **own named GAL** that coexist side by side.
 - **Personal contacts sync** — one-way copy of your Exchange Contacts folder
   into a normal, browsable Thunderbird address book ("Exchange Contacts").
 - **Three ways to connect:**
@@ -50,8 +54,9 @@ A packaged `.xpi` is attached to each GitHub Release.
 1. Account type → **OWA web login**.
 2. Click **Sign in (OWA)**, complete the normal Microsoft login, wait for the
    mailbox to load, and **leave that Outlook tab open**.
-3. **Check token status** should show a captured token.
-4. Search the **Exchange GAL** address book, and/or click **Sync my contacts**.
+3. **Refresh status** should show the account with a live token.
+4. Search the address book named after your organization, and/or click
+   **Sync contacts**. To add another mailbox, click **Add account (sign in)**.
 
 ## How it works
 

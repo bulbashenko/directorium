@@ -159,3 +159,28 @@ button:disabled { opacity: 0.5; cursor: default; }
   max-height: 300px;
   overflow-y: auto;
 }
+
+/* OWA accounts list */
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.account-row {
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.account-row .account-name {
+  flex: 1;
+  font-weight: 600;
+}
+.account-row .account-status {
+  font-size: 12px;
+  word-break: break-all;
+}

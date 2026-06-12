@@ -12,40 +12,39 @@
 //   3. We reuse that token to call the GAL/people API ourselves. Host
 //      permission lets the extension call it cross-origin without CORS issues.
 //
-// While the Outlook tab stays open it keeps refreshing the token, so ours stays
-// fresh. This is the user's own token for the user's own directory access.
+// MULTI-ACCOUNT: each captured token is filed under an "account" keyed by its
+// mailbox (X-AnchorMailbox / UPN). Signing into a second mailbox creates a
+// second account with its own token and its own address book. The account model
+// lives in lib/storage.js; this module operates on a given account.
 
-import { getConfig } from "../lib/storage.js";
+import { getConfig, getAccounts, upsertOwaAccount } from "../lib/storage.js";
 
-const TOKEN_KEY = "owaToken";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// In-memory cache (fast path); also persisted so it survives background restarts.
-let cachedToken = null;
+// Dedupe in-memory: last auth header seen per anchor, so we don't write storage
+// on every single request the Outlook tab makes.
+const lastSeenByAnchor = new Map();
 
 /**
  * Called by the background webRequest listener for every OWA request that
- * carries an Authorization header. Stores the freshest Bearer token.
+ * carries an Authorization header. Files the freshest Bearer token under its
+ * account (creating the account on first sight).
  * @param {string} authValue  full header value, e.g. "Bearer eyJ…"
- * @param {string|null} anchorMailbox  X-AnchorMailbox value, for routing
+ * @param {string|null} anchorMailbox  X-AnchorMailbox value, identifies account
+ * @returns {Promise<{account: object, isNew: boolean}|null>}
  */
-export function captureAuthHeader(authValue, anchorMailbox) {
-  if (!authValue || !authValue.startsWith("Bearer ")) return;
-  // Skip if unchanged, to avoid hammering storage on every request.
-  if (cachedToken && cachedToken.auth === authValue) {
-    if (anchorMailbox && !cachedToken.anchor) cachedToken.anchor = anchorMailbox;
-    return;
-  }
-  cachedToken = { auth: authValue, anchor: anchorMailbox || cachedToken?.anchor || null, ts: Date.now() };
-  messenger.storage.local.set({ [TOKEN_KEY]: cachedToken }).catch(() => {});
-  console.debug("[Directorium] Captured fresh OWA bearer token", cachedToken.anchor ? `(anchor ${cachedToken.anchor})` : "");
-}
-
-async function getCapturedToken() {
-  if (cachedToken) return cachedToken;
-  const stored = await messenger.storage.local.get(TOKEN_KEY);
-  cachedToken = stored[TOKEN_KEY] || null;
-  return cachedToken;
+export async function captureAuthHeader(authValue, anchorMailbox) {
+  if (!authValue || !authValue.startsWith("Bearer ")) return null;
+  const key = (anchorMailbox || "").toLowerCase();
+  if (lastSeenByAnchor.get(key) === authValue) return null; // unchanged
+  lastSeenByAnchor.set(key, authValue);
+  const res = await upsertOwaAccount(authValue, anchorMailbox);
+  console.debug(
+    `[Directorium] Captured OWA token for "${res.account.label}"`,
+    res.isNew ? "(new account)" : "",
+    res.account.anchor ? `anchor ${res.account.anchor}` : ""
+  );
+  return res;
 }
 
 /** Epoch ms when the JWT access token expires, or null. */
@@ -61,54 +60,71 @@ function parseExp(authValue) {
   }
 }
 
-/**
- * Silently refresh the token: open the mailbox in a background (inactive) tab,
- * wait until a newer token is captured from its traffic, then close it. Works
- * without user interaction as long as the Microsoft SSO session is still valid.
- * @returns {Promise<{ok:boolean, refreshed:boolean}>}
- */
-export async function silentRefreshToken() {
-  const cfg = await getConfig();
-  const before = (await getCapturedToken())?.ts || 0;
+/** Re-read an account from storage by id (to pick up a refreshed token). */
+async function reloadAccount(id) {
+  return (await getAccounts()).find((a) => a.id === id) || null;
+}
 
-  const tab = await browser.tabs.create({ url: `${cfg.owaUrl}/mail/`, active: false });
+/**
+ * Silently refresh an account's token: open its mailbox in a background
+ * (inactive) tab, wait until a newer token is captured from its traffic, then
+ * close it. Works without user interaction while the Microsoft SSO session for
+ * that mailbox is still valid.
+ *
+ * Note: in a shared browser session the opened tab loads whichever mailbox the
+ * cookies resolve to; tokens are still routed to the correct account by anchor,
+ * so a refresh may land on a different account than requested. The per-account
+ * token stays correct either way.
+ * @returns {Promise<{ok:boolean, refreshed:boolean, account:object}>}
+ */
+export async function silentRefreshToken(account) {
+  const before = account.token?.ts || 0;
+  const owaUrl = account.owaUrl || (await getConfig()).owaUrl;
+  const tab = await browser.tabs.create({ url: `${owaUrl}/mail/`, active: false });
   const tabId = tab.id;
   const deadline = Date.now() + 45_000;
   try {
     while (Date.now() < deadline) {
       await sleep(1500);
-      const tok = await getCapturedToken();
-      if (tok && tok.ts > before) {
-        console.debug("[Directorium] OWA token silently refreshed.");
-        return { ok: true, refreshed: true };
+      const fresh = await reloadAccount(account.id);
+      if (fresh && (fresh.token?.ts || 0) > before) {
+        console.debug(`[Directorium] Token silently refreshed for "${fresh.label}".`);
+        return { ok: true, refreshed: true, account: fresh };
       }
     }
     console.debug("[Directorium] Silent refresh got no token (SSO session likely expired).");
-    return { ok: false, refreshed: false };
+    return { ok: false, refreshed: false, account };
   } finally {
     browser.tabs.remove(tabId).catch(() => {});
   }
 }
 
-/** Refresh proactively if the token is missing, old, or expiring soon. */
+/** Refresh every account whose token is missing, old, or expiring soon. */
 export async function maybeRefresh() {
   const cfg = await getConfig();
   if (cfg.authMode !== "owa") return;
-  const tok = await getCapturedToken();
-  const ageMs = tok ? Date.now() - tok.ts : Infinity;
-  const exp = tok ? parseExp(tok.auth) : null;
-  const expiringSoon = exp ? exp - Date.now() < 2 * 3600 * 1000 : true;
-  if (!tok || ageMs > 6 * 3600 * 1000 || expiringSoon) {
-    await silentRefreshToken();
+  for (const account of await getAccounts()) {
+    const tok = account.token;
+    const ageMs = tok ? Date.now() - tok.ts : Infinity;
+    const exp = tok ? parseExp(tok.auth) : null;
+    const expiringSoon = exp ? exp - Date.now() < 2 * 3600 * 1000 : true;
+    if (!tok || ageMs > 6 * 3600 * 1000 || expiringSoon) {
+      await silentRefreshToken(account);
+    }
   }
 }
 
 /**
- * Interactive sign-in: open webmail and KEEP THE TAB OPEN. We resolve as soon
- * as a Bearer token has been captured from the page's traffic.
+ * Interactive sign-in to ADD an account: open webmail and KEEP THE TAB OPEN. We
+ * resolve as soon as a token is captured into a new or updated account.
+ * @returns {Promise<{ok:boolean, keepTabOpen:boolean, account:object}>}
  */
 export async function signInOwa() {
   const cfg = await getConfig();
+  const before = new Map(
+    (await getAccounts()).map((a) => [a.id, a.token?.ts || 0])
+  );
+
   const tab = await browser.tabs.create({ url: `${cfg.owaUrl}/mail/`, active: true });
   const tabId = tab.id;
   const deadline = Date.now() + 300_000;
@@ -116,19 +132,24 @@ export async function signInOwa() {
   while (Date.now() < deadline) {
     await sleep(2000);
 
-    // If the user closed the tab, stop.
     try {
       await browser.tabs.get(tabId);
     } catch {
       throw new Error("Sign-in tab was closed before a token could be captured.");
     }
 
-    const tok = await getCapturedToken();
-    // A token captured AFTER we opened the tab means this session is live.
-    if (tok && tok.ts >= Date.now() - 300_000) {
-      console.debug("[Directorium] OWA sign-in: token captured, leaving tab open for refresh.");
+    const accounts = await getAccounts();
+    const fresh = accounts.find(
+      (a) => (a.token?.ts || 0) > (before.get(a.id) || 0)
+    );
+    if (fresh && fresh.token?.ts >= Date.now() - 300_000) {
+      console.debug(`[Directorium] OWA sign-in captured account "${fresh.label}".`);
       // Leave the tab open so the page keeps the token fresh.
-      return { ok: true, keepTabOpen: true };
+      return {
+        ok: true,
+        keepTabOpen: true,
+        account: { id: fresh.id, label: fresh.label, anchor: fresh.anchor },
+      };
     }
   }
   throw new Error(
@@ -214,40 +235,43 @@ function personaToContact(p) {
   return c;
 }
 
-/** Call OWA service.svc FindPeople with the captured Bearer token. */
-async function findPeople(query, { folderId = "directory", offset = 0, max = 100, allowRefresh = true } = {}) {
-  const cfg = await getConfig();
-  const tok = await getCapturedToken();
+/** Call OWA service.svc FindPeople with a specific account's Bearer token. */
+async function findPeople(account, query, { folderId = "directory", offset = 0, max = 100, allowRefresh = true } = {}) {
+  const tok = account.token;
   if (!tok?.auth) {
     throw new Error(
-      "No OWA token yet. Click Sign in (OWA) and keep the Outlook tab open, then retry."
+      `No token for "${account.label}" yet. Sign in (OWA) and keep the Outlook tab open, then retry.`
     );
   }
+  const owaUrl = account.owaUrl || (await getConfig()).owaUrl;
+  const anchor = tok.anchor || account.anchor || "";
 
-  const resp = await fetch(`${cfg.owaUrl}/owa/service.svc?action=FindPeople`, {
+  const resp = await fetch(`${owaUrl}/owa/service.svc?action=FindPeople`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       Accept: "application/json",
       Authorization: tok.auth,
       Action: "FindPeople",
-      "X-AnchorMailbox": tok.anchor || "",
-      "X-RoutingParameter-SessionKey": tok.anchor || "",
+      "X-AnchorMailbox": anchor,
+      "X-RoutingParameter-SessionKey": anchor,
       "X-Requested-With": "XMLHttpRequest",
     },
     body: JSON.stringify(findPeopleBody(query, offset, max, folderId)),
   });
 
   const text = await resp.text();
-  console.debug(`[Directorium] OWA FindPeople "${query}" HTTP ${resp.status}:\n${text.slice(0, 1500)}`);
+  console.debug(`[Directorium] OWA FindPeople "${query}" [${account.label}] HTTP ${resp.status}:\n${text.slice(0, 1500)}`);
 
   if (resp.status === 401) {
     if (allowRefresh) {
       // Token went stale — try one silent refresh, then retry once.
-      const r = await silentRefreshToken();
-      if (r.refreshed) return findPeople(query, { folderId, offset, max, allowRefresh: false });
+      const r = await silentRefreshToken(account);
+      if (r.refreshed) {
+        return findPeople(r.account, query, { folderId, offset, max, allowRefresh: false });
+      }
     }
-    throw new Error("OWA token expired and silent refresh failed — Sign in (OWA) again.");
+    throw new Error(`OWA token for "${account.label}" expired and silent refresh failed — Sign in (OWA) again.`);
   }
   if (!resp.ok) {
     throw new Error(`OWA HTTP ${resp.status}: ${text.slice(0, 300)}`);
@@ -261,22 +285,23 @@ async function findPeople(query, { folderId = "directory", offset = 0, max = 100
   return { json, raw: text };
 }
 
-export async function searchGal(query) {
+export async function searchGal(query, account) {
+  if (!account) throw new Error("No OWA account configured — Sign in (OWA) first.");
   if (!query || !query.trim()) return { contacts: [], rawXml: "" };
-  const { json, raw } = await findPeople(query.trim());
+  const { json, raw } = await findPeople(account, query.trim());
   const contacts = extractPersonas(json).map(personaToContact).filter(Boolean);
-  console.debug(`[Directorium] OWA "${query}": ${contacts.length} contacts`);
+  console.debug(`[Directorium] OWA "${query}" [${account.label}]: ${contacts.length} contacts`);
   return { contacts, rawXml: raw };
 }
 
-export async function enumerateGal(onBatch) {
+export async function enumerateGal(account, onBatch) {
   const prefixes = "abcdefghijklmnopqrstuvwxyz0123456789".split("");
   const seen = new Set();
   const all = [];
   let lastRaw = "";
   for (const prefix of prefixes) {
     try {
-      const { contacts, rawXml } = await searchGal(prefix);
+      const { contacts, rawXml } = await searchGal(prefix, account);
       lastRaw = rawXml;
       const batch = [];
       for (const c of contacts) {
@@ -286,29 +311,29 @@ export async function enumerateGal(onBatch) {
       all.push(...batch);
       if (onBatch && batch.length) onBatch(batch, all.length);
     } catch (err) {
-      console.warn(`[Directorium] OWA enum "${prefix}" failed:`, err.message);
+      console.warn(`[Directorium] OWA enum "${prefix}" [${account.label}] failed:`, err.message);
     }
   }
   return { contacts: all, rawXml: lastRaw };
 }
 
-export async function testConnection() {
-  const { contacts, rawXml } = await searchGal("a");
+export async function testConnection(account) {
+  const { contacts, rawXml } = await searchGal("a", account);
   return { ok: true, contactCount: contacts.length, rawXml };
 }
 
 /**
- * Fetch ALL of the user's personal contacts (their own Contacts folder),
+ * Fetch ALL of one account's personal contacts (their own Contacts folder),
  * paging through FindPeople. Unlike the GAL, this set is small enough to sync
  * into a real, browsable Thunderbird address book.
  * @returns {Promise<Array<Record<string,string>>>}
  */
-export async function fetchPersonalContacts() {
+export async function fetchPersonalContacts(account) {
   const pageSize = 100;
   let offset = 0;
   const all = [];
   for (;;) {
-    const { json } = await findPeople("", { folderId: "contacts", offset, max: pageSize });
+    const { json } = await findPeople(account, "", { folderId: "contacts", offset, max: pageSize });
     const personas = extractPersonas(json);
     for (const p of personas) {
       const c = personaToContact(p);
@@ -318,19 +343,29 @@ export async function fetchPersonalContacts() {
     offset += pageSize;
     if (offset > 10000) break; // safety
   }
-  console.debug(`[Directorium] Fetched ${all.length} personal contacts`);
+  console.debug(`[Directorium] Fetched ${all.length} personal contacts for "${account.label}"`);
   return all;
 }
 
-/** Diagnostic: do we currently hold a captured token, how old, and time left? */
-export async function tokenStatus() {
-  const tok = await getCapturedToken();
-  if (!tok) return { hasToken: false };
+/** Diagnostic status for a single account (held token, age, time left). */
+function statusFor(account) {
+  const tok = account.token;
+  if (!tok) {
+    return { id: account.id, label: account.label, anchor: account.anchor, hasToken: false };
+  }
   const exp = parseExp(tok.auth);
   return {
+    id: account.id,
+    label: account.label,
+    anchor: account.anchor,
     hasToken: true,
     ageSeconds: Math.round((Date.now() - tok.ts) / 1000),
     expiresInSeconds: exp ? Math.round((exp - Date.now()) / 1000) : null,
-    anchor: tok.anchor,
   };
+}
+
+/** Diagnostic: status of every account (used by the options page). */
+export async function tokenStatus() {
+  const accounts = await getAccounts();
+  return { accounts: accounts.map(statusFor) };
 }

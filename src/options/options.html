@@ -50,9 +50,10 @@
           </select>
         </label>
 
-        <label>
-          <span>Address book name</span>
+        <label id="addressBookNameRow">
+          <span>Address book name (EWS / on-premise)</span>
           <input id="addressBookName" type="text" placeholder="Exchange GAL" />
+          <small>In OWA web login mode each account gets its own address book, named after its organization — see Accounts below.</small>
         </label>
       </section>
 
@@ -69,8 +70,16 @@
           no app). <b>Leave that Outlook tab open</b>: Directorium reuses the token it
           refreshes to query the GAL. No admin approval, no app registration.
         </p>
-        <button id="owaSignInBtn" type="button" class="primary">Sign in (OWA)</button>
-        <button id="owaInspectBtn" type="button">Check token status</button>
+        <button id="owaSignInBtn" type="button" class="primary">Add account (sign in)</button>
+        <button id="owaInspectBtn" type="button">Refresh status</button>
+
+        <h3 style="margin:18px 0 6px">Accounts</h3>
+        <p style="color:var(--muted);font-size:13px">
+          Each signed-in mailbox becomes its own address book, named after its
+          organization. Sign in again with a different mailbox to add another.
+          <b>Rename changes apply after restarting Thunderbird.</b>
+        </p>
+        <div id="accountList" class="account-list"></div>
         <pre id="owaCookieDump" class="hidden" style="margin-top:10px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:11px;white-space:pre-wrap;word-break:break-all;"></pre>
       </section>
 

@@ -34,7 +34,102 @@ function applyAuthModeVisibility() {
   $("owaSection").classList.toggle("hidden", !isOwa);
   $("basicSection").classList.toggle("hidden", !isBasic);
   $("redirectBox").classList.toggle("hidden", !needsOwnApp);
+  // In OWA mode the address-book names come from the accounts, not this field.
+  $("addressBookNameRow").classList.toggle("hidden", isOwa);
   if (needsOwnApp) showRedirectUrl();
+  if (isOwa) renderAccounts();
+}
+
+// ---------------------------------------------------------------------------
+// OWA accounts list (one address book per signed-in mailbox)
+// ---------------------------------------------------------------------------
+function fmtTimeLeft(s) {
+  if (s == null) return "unknown expiry";
+  if (s <= 0) return "expired";
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m left`;
+}
+
+async function renderAccounts() {
+  const box = $("accountList");
+  if (!box) return;
+  let accounts = [];
+  let statusById = {};
+  try {
+    const listResp = await messenger.runtime.sendMessage({ type: "listAccounts" });
+    if (listResp.ok) accounts = listResp.result.accounts || [];
+    const statResp = await messenger.runtime.sendMessage({ type: "owaTokenStatus" });
+    if (statResp.ok) {
+      for (const s of statResp.result.accounts || []) statusById[s.id] = s;
+    }
+  } catch (_) {/* ignore */}
+
+  box.textContent = "";
+  if (!accounts.length) {
+    const empty = document.createElement("p");
+    empty.style.cssText = "color:var(--muted);font-size:13px";
+    empty.textContent = "No accounts yet. Click “Add account (sign in)” above.";
+    box.appendChild(empty);
+    return;
+  }
+
+  for (const acct of accounts) {
+    const st = statusById[acct.id] || {};
+    const row = document.createElement("div");
+    row.className = "account-row";
+
+    const name = document.createElement("input");
+    name.type = "text";
+    name.value = acct.label;
+    name.title = "Address book name";
+    name.className = "account-name";
+
+    const status = document.createElement("span");
+    status.className = "account-status";
+    status.textContent = st.hasToken
+      ? `● ${acct.anchor || ""} — token OK, ${fmtTimeLeft(st.expiresInSeconds)}`
+      : `○ ${acct.anchor || ""} — no token (sign in)`;
+    status.style.color = st.hasToken ? "var(--ok)" : "var(--err)";
+
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.textContent = "Rename";
+    rename.addEventListener("click", async () => {
+      const resp = await messenger.runtime.sendMessage({
+        type: "renameAccount", id: acct.id, label: name.value.trim(),
+      });
+      setMsg(resp.ok
+        ? "Renamed. Restart Thunderbird to see the new address-book name."
+        : `Rename failed: ${resp.error}`, resp.ok ? "ok" : "err");
+    });
+
+    const sync = document.createElement("button");
+    sync.type = "button";
+    sync.textContent = "Sync contacts";
+    sync.addEventListener("click", () => syncContacts(acct.id));
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", async () => {
+      const resp = await messenger.runtime.sendMessage({ type: "removeAccount", id: acct.id });
+      if (resp.ok) {
+        setMsg(`Removed “${acct.label}”.`, "ok");
+        renderAccounts();
+      } else {
+        setMsg(`Remove failed: ${resp.error}`, "err");
+      }
+    });
+
+    const top = document.createElement("div");
+    top.className = "row";
+    top.append(name, rename);
+    const actions = document.createElement("div");
+    actions.className = "row";
+    actions.append(sync, remove);
+
+    row.append(top, status, actions);
+    box.appendChild(row);
+  }
 }
 
 async function showRedirectUrl() {
@@ -174,7 +269,12 @@ async function owaSignIn() {
     await save();
     const resp = await messenger.runtime.sendMessage({ type: "startOwaSignIn" });
     if (!resp.ok) throw new Error(resp.error);
-    setMsg("✓ Signed in to OWA. GAL is ready — try the Diagnostics search below.", "ok");
+    const label = resp.result?.account?.label;
+    setMsg(
+      `✓ Signed in${label ? ` to “${label}”` : ""}. A new address book will appear (restart Thunderbird if it doesn't show immediately).`,
+      "ok"
+    );
+    renderAccounts();
   } catch (err) {
     setMsg(`OWA sign-in failed: ${err.message}`, "err");
   } finally {
@@ -187,19 +287,14 @@ async function owaInspect() {
   try {
     const resp = await messenger.runtime.sendMessage({ type: "owaTokenStatus" });
     if (!resp.ok) throw new Error(resp.error);
-    const s = resp.result;
-    if (s.hasToken) {
-      const left = s.expiresInSeconds != null
-        ? `${Math.floor(s.expiresInSeconds / 3600)}h ${Math.floor((s.expiresInSeconds % 3600) / 60)}m left`
-        : "unknown expiry";
-      $("owaCookieDump").textContent =
-        `✓ Token captured ${s.ageSeconds}s ago\nExpires: ${left}\nanchor: ${s.anchor || "(none)"}`;
-      setMsg("Token captured — GAL works. Auto-refreshes in the background.", "ok");
+    const accounts = resp.result.accounts || [];
+    await renderAccounts();
+    const withToken = accounts.filter((a) => a.hasToken).length;
+    if (accounts.length) {
+      setMsg(`${withToken}/${accounts.length} account(s) have a live token. Auto-refreshes in the background.`, "ok");
     } else {
-      $("owaCookieDump").textContent = "✗ No token captured yet.";
-      setMsg("No token yet — Sign in (OWA) and keep the Outlook tab open.", "err");
+      setMsg("No accounts yet — Add account (sign in) and keep the Outlook tab open.", "err");
     }
-    $("owaCookieDump").classList.remove("hidden");
   } catch (err) {
     setMsg(`Status check failed: ${err.message}`, "err");
   } finally {
@@ -207,10 +302,10 @@ async function owaInspect() {
   }
 }
 
-async function syncContacts() {
+async function syncContacts(accountId) {
   setMsg("Syncing your personal contacts…");
   try {
-    const resp = await messenger.runtime.sendMessage({ type: "syncPersonalContacts" });
+    const resp = await messenger.runtime.sendMessage({ type: "syncPersonalContacts", accountId });
     if (!resp.ok) throw new Error(resp.error);
     setMsg(`✓ Synced ${resp.result.count} contacts into "${resp.result.bookName}".`, "ok");
   } catch (err) {
@@ -299,7 +394,7 @@ $("owaSignInBtn").addEventListener("click", owaSignIn);
 $("owaInspectBtn").addEventListener("click", owaInspect);
 $("testBtn").addEventListener("click", test);
 $("syncBtn").addEventListener("click", syncFull);
-$("syncContactsBtn").addEventListener("click", syncContacts);
+$("syncContactsBtn").addEventListener("click", () => syncContacts());
 $("diagBtn").addEventListener("click", diagSearch);
 
 $("ewsUrl").placeholder = DEFAULT_CONFIG.ewsUrl;
