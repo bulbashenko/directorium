@@ -6,7 +6,7 @@ A **free** Thunderbird add-on that brings the Microsoft Exchange / Office 365
 
 A free alternative to the paid **Owl for Exchange**, focused on the directory.
 
-🧩 **Install from [addons.thunderbird.net](https://addons.thunderbird.net/thunderbird/addon/directorium/)**
+**Install from [addons.thunderbird.net](https://addons.thunderbird.net/thunderbird/addon/directorium/)**
 · 📖 **New here? Read the [User Guide](GUIDE.md).**
 
 > *directorium* (Latin): a directory or guide — also the Church's liturgical
