@@ -101,8 +101,11 @@ export async function setTokens(tokens) {
 // @typedef {Object} OwaAccount
 // @property {string} id        Stable internal id.
 // @property {string} label     Address-book name shown in Thunderbird.
-// @property {string|null} anchor  X-AnchorMailbox / UPN (the mailbox email).
-// @property {string|null} tenant  Azure tenant id (tid claim), for matching.
+// @property {string|null} user    "<tid>/<oid>" from the token: the account key.
+// @property {string|null} email   Mailbox email from the token (for labels/UI).
+// @property {string|null} anchor  X-AnchorMailbox used for routing (email,
+//                                 "OID:<oid>@<tid>" or "PUID:<puid>@<tid>").
+// @property {string|null} tenant  Azure tenant id (tid claim).
 // @property {string} owaUrl    OWA origin this account lives on.
 // @property {{auth:string, anchor:string|null, ts:number}|null} token
 
@@ -118,29 +121,71 @@ function parseJwt(authValue) {
   }
 }
 
-/** Best-effort mailbox email for a captured token (anchor or a JWT claim). */
-function emailFromToken(authValue, anchor) {
+const isEmail = (s) => /^[^\s@:]+@[^\s@]+\.[^\s@]+$/.test(s || "");
+
+/**
+ * Who a captured token belongs to, from its JWT claims. `user` (tenant + object
+ * id) is the stable account key: the new Outlook sends X-AnchorMailbox in
+ * several formats for the same mailbox ("OID:<oid>@<tid>", "PUID:<puid>@<tid>",
+ * an SMTP address), so the anchor alone can't identify an account.
+ */
+function tokenIdentity(authValue) {
   const p = parseJwt(authValue) || {};
-  const cand =
-    anchor || p.upn || p.unique_name || p.preferred_username || p.email || "";
-  return /\S+@\S+\.\S+/.test(cand) ? cand : "";
+  const email =
+    [p.upn, p.preferred_username, p.email, p.smtp, p.unique_name].find(isEmail) || "";
+  return {
+    user: p.tid && p.oid ? `${p.tid}/${p.oid}`.toLowerCase() : null,
+    tenant: p.tid || null,
+    oid: p.oid || null,
+    puid: p.puid || null,
+    email,
+  };
 }
 
-/** Azure tenant id from the token, or null. */
-function tenantFromToken(authValue) {
-  return parseJwt(authValue)?.tid || null;
+/** Email in an X-AnchorMailbox value ("user@x.com" or "SMTP:user@x.com"), or "". */
+function anchorEmail(anchor) {
+  const a = String(anchor || "").replace(/^smtp:/i, "");
+  return isEmail(a) ? a : "";
 }
 
 /**
- * Default address-book label for a newly captured account: the email domain
- * (e.g. "contoso.com"), trimmed of the noisy ".onmicrosoft.com" suffix. Falls
- * back to "Exchange GAL" if no email can be determined.
+ * Whether an X-AnchorMailbox value points at the token's own mailbox (and not,
+ * say, a shared mailbox the user has open). Unknown formats count as a match
+ * only when the token carries no identity to compare against.
  */
-export function deriveAccountLabel(authValue, anchor) {
-  const email = emailFromToken(authValue, anchor);
+function anchorIsOwn(anchor, id) {
+  if (!anchor) return false;
+  const m = /^(oid|puid):([^@]+)@/i.exec(anchor);
+  if (m) {
+    const want = m[1].toLowerCase() === "oid" ? id.oid : id.puid;
+    return !want || m[2].toLowerCase() === String(want).toLowerCase();
+  }
+  const email = anchorEmail(anchor);
+  return !id.email || !email || email.toLowerCase() === id.email.toLowerCase();
+}
+
+/**
+ * Default address-book label for an account: the email domain (e.g.
+ * "contoso.com"), trimmed of the noisy ".onmicrosoft.com" suffix. Falls back to
+ * "Exchange GAL" if no email can be determined.
+ */
+function labelForEmail(email) {
   if (!email) return "Exchange GAL";
-  const domain = (email.split("@")[1] || email).replace(/\.onmicrosoft\.com$/i, "");
+  const domain = (email.split("@")[1] || "").replace(/\.onmicrosoft\.com$/i, "");
   return domain || "Exchange GAL";
+}
+
+/** Labels assigned automatically when no email was known (pre-0.3.1 fallback). */
+const isFallbackLabel = (label) => /^Exchange GAL( \(\d+\))?$/.test(label || "");
+
+/** `label`, or a variant not used by any of `others` (email, then "(2)", "(3)"…). */
+function uniqueLabel(label, email, others) {
+  const taken = new Set(others.map((a) => a.label));
+  if (!taken.has(label)) return label;
+  if (email && !taken.has(email)) return email;
+  for (let n = 2; ; n++) {
+    if (!taken.has(`${label} (${n})`)) return `${label} (${n})`;
+  }
 }
 
 /** @returns {Promise<OwaAccount[]>} */
@@ -189,45 +234,61 @@ export function readBooksMirror() {
   return [];
 }
 
+/** The account a token identity belongs to: by user key, else by email/anchor. */
+function findAccountFor(accounts, id, anchor) {
+  const lc = (s) => String(s || "").toLowerCase();
+  if (id.user) {
+    const byUser = accounts.find((a) => a.user === id.user);
+    if (byUser) return byUser;
+  }
+  const email = lc(id.email || anchorEmail(anchor));
+  return (
+    (email && accounts.find((a) => lc(a.email) === email || lc(anchorEmail(a.anchor)) === email)) ||
+    (!id.user && anchor && accounts.find((a) => lc(a.anchor) === lc(anchor))) ||
+    null
+  );
+}
+
 /**
- * Insert or update the OWA account that owns a freshly captured token. Matched
- * by anchor mailbox (preferred) or tenant id. Returns the account and whether
- * it was newly created (so the caller can register a new provider).
+ * Insert or update the OWA account that owns a freshly captured token, matched
+ * by the token's user (tenant + object id), falling back to its email. Returns
+ * the account and whether it was newly created (so the caller can register a
+ * new provider).
  * @returns {Promise<{account: OwaAccount, isNew: boolean}>}
  */
 export async function upsertOwaAccount(authValue, anchor) {
   const accounts = await getAccounts();
-  const email = emailFromToken(authValue, anchor);
-  const key = (anchor || email || "").toLowerCase();
-  const tenant = tenantFromToken(authValue);
+  const id = tokenIdentity(authValue);
+  let account = findAccountFor(accounts, id, anchor);
 
-  let account =
-    (key && accounts.find((a) => (a.anchor || "").toLowerCase() === key)) ||
-    (!key && tenant && accounts.find((a) => a.tenant === tenant)) ||
-    null;
-
-  const token = {
-    auth: authValue,
-    anchor: anchor || account?.token?.anchor || account?.anchor || null,
-    ts: Date.now(),
-  };
+  // Route with the captured anchor only if it is this user's own mailbox;
+  // otherwise keep what we had, or build one from the token.
+  const ownAnchor =
+    (anchorIsOwn(anchor, id) && anchor) ||
+    account?.anchor ||
+    id.email ||
+    (id.oid && id.tenant ? `OID:${id.oid}@${id.tenant}` : null);
+  const token = { auth: authValue, anchor: ownAnchor, ts: Date.now() };
 
   let isNew = false;
   if (account) {
     account.token = token;
-    if (!account.anchor && email) account.anchor = email;
-    if (!account.tenant && tenant) account.tenant = tenant;
+    account.anchor = ownAnchor;
+    if (id.user) account.user = id.user;
+    if (id.email) account.email = id.email;
+    if (id.tenant) account.tenant = id.tenant;
   } else {
     isNew = true;
-    let label = deriveAccountLabel(authValue, anchor);
-    // Disambiguate if another account already claims this label (e.g. two
-    // mailboxes in the same tenant): fall back to the full email address.
-    if (accounts.some((a) => a.label === label)) label = email || `${label} (2)`;
+    const email = id.email || anchorEmail(anchor);
     account = {
       id: `acct_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
-      label,
-      anchor: anchor || email || null,
-      tenant,
+      // Two mailboxes in the same tenant would share a label: fall back to the
+      // full email address.
+      label: uniqueLabel(labelForEmail(email), email, accounts),
+      user: id.user,
+      email: email || null,
+      anchor: ownAnchor,
+      tenant: id.tenant,
       owaUrl: (await getConfig()).owaUrl,
       token,
     };
@@ -235,6 +296,45 @@ export async function upsertOwaAccount(authValue, anchor) {
   }
   await writeAccounts(accounts);
   return { account, isNew };
+}
+
+/**
+ * Repair accounts created by earlier versions, which keyed accounts by the raw
+ * X-AnchorMailbox: fill in user/email from each stored token, merge duplicates
+ * of the same user (keeping the newest token), and replace "Exchange GAL"
+ * fallback labels with the organization's domain. Runs once per startup.
+ * @returns {Promise<boolean>} whether anything changed
+ */
+export async function normalizeAccounts() {
+  const accounts = await getAccounts();
+  const merged = [];
+  let changed = false;
+
+  for (const a of accounts) {
+    const id = a.token?.auth ? tokenIdentity(a.token.auth) : null;
+    if (id?.user && a.user !== id.user) { a.user = id.user; changed = true; }
+    if (id?.email && a.email !== id.email) { a.email = id.email; changed = true; }
+
+    const twin = a.user && merged.find((m) => m.user === a.user);
+    if (twin) {
+      if ((a.token?.ts || 0) > (twin.token?.ts || 0)) twin.token = a.token;
+      if (isFallbackLabel(twin.label) && !isFallbackLabel(a.label)) twin.label = a.label;
+      changed = true;
+      continue;
+    }
+    merged.push(a);
+  }
+
+  for (const a of merged) {
+    if (isFallbackLabel(a.label) && a.email) {
+      const others = merged.filter((m) => m !== a);
+      a.label = uniqueLabel(labelForEmail(a.email), a.email, others);
+      changed = true;
+    }
+  }
+
+  if (changed) await writeAccounts(merged);
+  return changed;
 }
 
 /** Patch the in-memory token of an existing account (after a silent refresh). */

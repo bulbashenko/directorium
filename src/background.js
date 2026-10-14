@@ -11,6 +11,7 @@ import {
   upsertOwaAccount,
   updateAccountLabel,
   removeAccount,
+  normalizeAccounts,
   refreshBooksMirror,
   readBooksMirror,
 } from "./lib/storage.js";
@@ -157,12 +158,14 @@ messenger.alarms.onAlarm.addListener((alarm) => {
 });
 
 // ---------------------------------------------------------------------------
-// One-time async startup: migrate the legacy single token, reconcile providers
-// against storage, then do an initial refresh check.
+// One-time async startup: migrate the legacy single token, repair accounts from
+// older versions (duplicates, "Exchange GAL" names), reconcile providers against
+// storage, then do an initial refresh check.
 // ---------------------------------------------------------------------------
 (async () => {
   try {
     await migrateLegacyToken();
+    await normalizeAccounts();
     await reconcileProviders();
   } catch (e) {
     console.warn("[Directorium] startup reconcile failed:", e);

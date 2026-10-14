@@ -12,8 +12,8 @@
 //   3. We reuse that token to call the GAL/people API ourselves. Host
 //      permission lets the extension call it cross-origin without CORS issues.
 //
-// MULTI-ACCOUNT: each captured token is filed under an "account" keyed by its
-// mailbox (X-AnchorMailbox / UPN). Signing into a second mailbox creates a
+// MULTI-ACCOUNT: each captured token is filed under an "account" keyed by the
+// token's user (tenant + object id claims). Signing into a second mailbox creates a
 // second account with its own token and its own address book. The account model
 // lives in lib/storage.js; this module operates on a given account.
 

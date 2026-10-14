@@ -85,9 +85,10 @@ async function renderAccounts() {
 
     const status = document.createElement("span");
     status.className = "account-status";
+    const who = acct.email || acct.anchor || "";
     status.textContent = st.hasToken
-      ? `● ${acct.anchor || ""} — token OK, ${fmtTimeLeft(st.expiresInSeconds)}`
-      : `○ ${acct.anchor || ""} — no token (sign in)`;
+      ? `● ${who} — token OK, ${fmtTimeLeft(st.expiresInSeconds)}`
+      : `○ ${who} — no token (sign in)`;
     status.style.color = st.hasToken ? "var(--ok)" : "var(--err)";
 
     const rename = document.createElement("button");
