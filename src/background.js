@@ -102,6 +102,16 @@ async function reconcileProviders() {
 // termination — this is the path that handles a cold wake-for-search).
 for (const book of readBooksMirror()) registerProvider(book);
 
+// Make Thunderbird run this background at app startup. Without a runtime.onStartup
+// listener, an MV3 event page is only *primed* at startup, and a primed
+// onSearchRequest listener has no address book behind it until the background
+// first runs — so the GAL books were missing after a restart until something
+// (e.g. the hourly alarm) woke the background. Running the top-level code above
+// creates the books; the startup task below reconciles them and refreshes tokens.
+messenger.runtime.onStartup.addListener(() => {
+  console.debug("[Directorium] Thunderbird started; address books registered.");
+});
+
 // ---------------------------------------------------------------------------
 // OWA token capture (for the "owa" auth mode — the free Owl alternative)
 // ---------------------------------------------------------------------------

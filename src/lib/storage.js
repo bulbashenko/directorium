@@ -2,13 +2,14 @@
 // Settings live in storage.local so they survive restarts but never sync to
 // any Mozilla account (tokens must stay on-device).
 
-/** @typedef {"oauth" | "basic"} AuthMode */
+/** @typedef {"owa" | "oauth" | "oauth-interactive" | "basic"} AuthMode */
 
 export const DEFAULT_CONFIG = {
-  // "oauth-interactive" = interactive sign-in with your own (verified or
-  // admin-approved) Azure app — the realistic Office 365 path on managed
-  // tenants. "oauth" (device code) works on lenient tenants without an app.
-  authMode: /** @type {AuthMode} */ ("oauth-interactive"),
+  // "owa" = sign in through Outlook on the web and reuse its first-party token —
+  // works on locked-down Office 365 tenants without admin approval.
+  // "oauth-interactive" needs your own Azure app; "oauth" (device code) works on
+  // lenient tenants; "basic" is for on-premise Exchange.
+  authMode: /** @type {AuthMode} */ ("owa"),
 
   // EWS endpoint. For Office 365 this is always the same host.
   ewsUrl: "https://outlook.office365.com/EWS/Exchange.asmx",

@@ -55,7 +55,7 @@ is handled natively by Thunderbird 145+, so Directorium doesn't do mail.)
 This mode works even when your organisation blocks third-party apps.
 
 1. Open **Add-ons → Directorium → Options** (or Preferences).
-2. **Account type** → **Office 365 — OWA web login**.
+2. **Account type** → **Office 365 — OWA web login** (selected by default).
 3. Leave **OWA URL** as `https://outlook.office365.com`.
 4. Click **Add account (sign in)**. A tab opens to Microsoft webmail.
 5. Sign in with your normal account and password (and MFA if asked).
