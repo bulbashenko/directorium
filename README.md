@@ -6,7 +6,8 @@ A **free** Thunderbird add-on that brings the Microsoft Exchange / Office 365
 
 A free alternative to the paid **Owl for Exchange**, focused on the directory.
 
-📖 **New here? Read the [User Guide](GUIDE.md).**
+🧩 **Install from [addons.thunderbird.net](https://addons.thunderbird.net/thunderbird/addon/directorium/)**
+· 📖 **New here? Read the [User Guide](GUIDE.md).**
 
 > *directorium* (Latin): a directory or guide — also the Church's liturgical
 > Ordo. Fitting for an address directory (and a future calendar).
@@ -27,7 +28,7 @@ device-code and third-party EWS OAuth apps (where most free tools fail).
 - **Multiple accounts** — sign into more than one mailbox (e.g. work + a second
   tenant) and each gets its **own named GAL** that coexist side by side.
 - **Personal contacts sync** — one-way copy of your Exchange Contacts folder
-  into a normal, browsable Thunderbird address book ("Exchange Contacts").
+  into a normal, browsable Thunderbird address book ("Contacts — &lt;your org&gt;").
 - **Three ways to connect:**
   - **OWA web login** *(recommended for Office 365, works like Owl)* — sign in
     to webmail once; Directorium reuses the first-party token your Outlook tab
@@ -38,25 +39,32 @@ device-code and third-party EWS OAuth apps (where most free tools fail).
 - **Background token auto-refresh** — once signed in (OWA mode), the token is
   refreshed silently; you rarely need to sign in again.
 
-## Install (development / from source)
+## Install
 
-Thunderbird requires signing for permanent installation, so for now load it
-temporarily (or sign it via [addons.thunderbird.net](https://addons.thunderbird.net)):
+**Recommended:** install the signed add-on from
+[addons.thunderbird.net](https://addons.thunderbird.net/thunderbird/addon/directorium/)
+— in Thunderbird, **Tools → Add-ons and Themes**, search for *Directorium*, or
+open that page and click **Add to Thunderbird**. It updates automatically.
+
+Requires Thunderbird 128 or newer.
+
+### From source (development)
 
 1. **Tools → Developer Tools → Debug Add-ons** → **Load Temporary Add-on…**
 2. Pick `manifest.json` in this folder.
 3. Open **Directorium settings** (Add-ons Manager → Directorium → Options).
 
-A packaged `.xpi` is attached to each GitHub Release.
+A packaged (unsigned) `.xpi` is also attached to each
+[GitHub Release](https://github.com/bulbashenko/directorium/releases).
 
 ## Configure (Office 365, locked tenant — the Owl-style path)
 
 1. Account type → **OWA web login**.
-2. Click **Sign in (OWA)**, complete the normal Microsoft login, wait for the
-   mailbox to load, and **leave that Outlook tab open**.
+2. Click **Add account (sign in)**, complete the normal Microsoft login, wait
+   for the mailbox to load, and **leave that Outlook tab open**.
 3. **Refresh status** should show the account with a live token.
 4. Search the address book named after your organization, and/or click
-   **Sync contacts**. To add another mailbox, click **Add account (sign in)**.
+   **Sync contacts**. To add another mailbox, click **Add account (sign in)** again.
 
 ## How it works
 

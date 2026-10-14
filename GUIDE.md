@@ -28,15 +28,21 @@ is handled natively by Thunderbird 145+, so Directorium doesn't do mail.)
 
 ## 2. Install
 
+### From addons.thunderbird.net (recommended)
+1. Thunderbird → **Tools → Add-ons and Themes**, search for **Directorium**,
+   and click **Add to Thunderbird**.
+   Or open the [add-on page](https://addons.thunderbird.net/thunderbird/addon/directorium/)
+   and install it from there.
+2. Confirm the permissions prompt. The add-on updates automatically.
+
 ### From the packaged add-on (.xpi)
 1. Download the latest `directorium-x.y.z.xpi` from the
    [Releases page](https://github.com/bulbashenko/directorium/releases).
 2. Thunderbird → **Tools → Add-ons and Themes**.
 3. Gear icon ⚙️ → **Install Add-on From File…** → choose the `.xpi`.
 
-> The `.xpi` is unsigned, so Thunderbird may only keep it until restart. For a
-> permanent install, load it temporarily (below) or install the signed version
-> from addons.thunderbird.net once published.
+> The GitHub `.xpi` is unsigned, so Thunderbird may only keep it until restart.
+> For a permanent install, use the add-on page above.
 
 ### Temporary (for development / testing)
 1. **Tools → Developer Tools → Debug Add-ons**.
@@ -88,7 +94,7 @@ Use **Office 365 — EWS device code** for tenants that allow it, or
 ### Sync your personal contacts
 - Options → **Sync contacts** (next to the account), or the **Sync my contacts**
   button for the first account.
-- A new address book **Contacts — <your org>** is created/updated with that
+- A new address book **Contacts — &lt;your org&gt;** is created/updated with that
   account's Exchange Contacts folder. Re-run it any time to refresh.
 
 ---
